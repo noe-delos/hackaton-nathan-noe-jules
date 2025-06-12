@@ -1,11 +1,22 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import os
 from openai import OpenAI
+from supabase import create_client
+import asyncio
 
 load_dotenv()
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+DATEFORMAT = "%Y-%m-%dT%H:%M:%SZ"
+
+print(SUPABASE_URL,SUPABASE_KEY)
+print(OPENAI_API_KEY)
+
+supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
@@ -26,13 +37,35 @@ tu vas recevoir une demande de recherche dans une conversation.
 tu vas recevoir un morceau de conversation, representé par un 
 """
 
-def get_resume(chunk:list[dict]):
+async def get_conversation(conversationid:str):
+    """
+    Get a conversation from the supabase database
+    """
+    
+    response = supabase_client.table("conversations").select("messages").eq("id", conversationid).execute()
+    return response.data[0]["messages"]
+
+async def get_resume(chunk:list[dict]):
     """
     Get a resume of a chunk of conversation using a llm
     """
-    pass
 
-def search_conversation(conversationid,query:str):
+    # build a string with the conversation
+    conversation_string = ""
+    for message in chunk:
+        print(message)
+        conversation_string += f"{message['date']}: {message['user_id']}: {message['content']}\n"
+
+    response = client.chat.completions.create(
+        model=MODEL,  # or "gpt-4-turbo"
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": CHUNK_RESUME_PROMPT + "\n\n" + conversation_string}
+        ]
+    )
+    return response.choices[0].message.content
+
+async def search_conversation(query:str):
     """
     Search a conversation for a query
     """
@@ -49,7 +82,7 @@ def search_conversation(conversationid,query:str):
 
 
 
-def analysis_conversation(conversation:list[dict]):
+async def analysis_conversation(conversation:list[dict]):
     """
     Analyze a conversation and return a summary of the conversation.
     """
@@ -63,27 +96,29 @@ def analysis_conversation(conversation:list[dict]):
         if i == 0:
             chunks.append([conversation[i]])
         else:
-            if conversation[i]["date"] - conversation[i-1]["date"] > CONVERSATION_THRESHOLD:
+            if datetime.strptime(conversation[i]["date"], DATEFORMAT) - datetime.strptime(conversation[i-1]["date"], DATEFORMAT) > CONVERSATION_THRESHOLD:
                 chunks.append([conversation[i]])
             else:
                 chunks[-1].append(conversation[i])
 
-    # for each chunk, get a resume of the conversation using a llm
 
+    # for each chunk, get a resume of the conversation using a llm
+    chunks_resumes = []
     for chunk in chunks:
         # get a resume of the conversation using a llm
-        resume = get_resume(chunk)
-        print(resume)
+        resume = await get_resume(chunk)
+        chunks_resumes.append({"resume": resume,"start_date": chunk[0]["date"],"message_id": chunk[0]["id"]})
+        #put the cunksresume in supabase : 
+    supabase_client.table("chunks").upsert({"conversation_id": conversationid, "chunks": chunks_resumes}).execute()
+
+
 
 
 
 
 if __name__ == "__main__":
-    conversation = [
-        {"date": "2025-06-12:10:00", "content": "Hello, how are you?", "userid": "1"},
-        {"date": "2025-06-12:10:01", "content": "I'm fine, thank you!", "userid": "2"},
-        {"date": "2025-06-12:10:02", "content": "What's your name?", "userid": "1"},
-        {"date": "2025-06-12:10:03", "content": "My name is John.", "userid": "2"},
-        {"date": "2025-06-12:10:04", "content": "What's your name?", "userid": "1"},
-    ]
-    print(analysis_conversation(conversation))
+    conversationid = "62c50f8f-41a8-46be-be36-964653388e4e"
+    conversation = asyncio.run(get_conversation(conversationid))
+    print(conversation)
+    answer = asyncio.run(analysis_conversation(conversation))
+    print(answer)
