@@ -6,8 +6,6 @@ import requests
 
 load_dotenv()
 
-client = OpenAI(api_key=os.getenv("OPEN_AI_KEY"))
-
 def call_to_giphy(query):
     url = "https://api.giphy.com/v1/gifs/search"
     params = {
@@ -33,6 +31,7 @@ def gif_answer(conversation):
     """
     Analyze a conversation and return a text response based on the last message.
     """
+    client = OpenAI(api_key=os.getenv("OPEN_AI_KEY"))
 
     last_message = conversation[-1]['content']
 
@@ -51,10 +50,3 @@ def gif_answer(conversation):
     giphy_response = call_to_giphy(json_response.get("keywords"))
 
     return giphy_response
-
-
-if __name__ == "__main__":
-    conversation = [
-        {"date": "2025-06-12", "content": "Happy birthday!", "userid": "1"},
-    ]
-    print(gif_answer(conversation))
