@@ -50,3 +50,9 @@ def gif_answer(conversation):
     giphy_response = call_to_giphy(json_response.get("keywords"))
 
     return giphy_response
+
+if __name__ == "__main__":
+    conversation = [
+        {"date": "2025-06-12", "content": "Happy birthday!", "userid": "1"},
+    ]
+    print(gif_answer(conversation))
